@@ -2,7 +2,7 @@
 以下Qiita記事の実装コードとなります。
 コードの解説については記事を参照してください。
 
-[qiita]()
+[【強化学習】R2D2を実装/解説してみたリベンジ 解説編（Keras-RL）](https://qiita.com/pocokhc/items/408f0f818140924ad4c4)
 
 # 概要
 Keras 向けの強化学習ライブラリである [Keras-rl](https://github.com/keras-rl/keras-rl) の Agent を拡張したものとなります。
