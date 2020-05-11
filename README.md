@@ -5,8 +5,8 @@
 [【強化学習】R2D2を実装/解説してみたリベンジ 解説編（Keras-RL）](https://qiita.com/pocokhc/items/408f0f818140924ad4c4)
 
 # 概要
-Keras 向けの強化学習ライブラリである [Keras-rl](https://github.com/keras-rl/keras-rl) の Agent を拡張したものとなります。
-以下のアルゴリズムを実装しています。(非公式です)
+Keras 向けの強化学習ライブラリである [Keras-rl](https://github.com/keras-rl/keras-rl) の Agent を拡張したものとなります。  
+以下のアルゴリズムを実装しています。(非公式です)  
 
 - Rainbow
   - Deep Q Learning (DQN)
