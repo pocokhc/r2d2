@@ -648,8 +648,8 @@ class ActorStop(rl.callbacks.Callback):
 class Actor():
     allocate = "/device:CPU:0"
 
-    def __init__(self):
-        pass
+    def getPolicy(self, actor_index, actor_num):
+        raise NotImplementedError()
 
     def fit(self, index, agent):
         raise NotImplementedError()
@@ -727,10 +727,11 @@ class ActorRunner(rl.core.Agent):
         self.actor = actor
         self.exp_q = exp_q
         self.weights_q = weights_q
+        self.actors_num = len(kwargs["actors"])
 
         self.enable_rescaling = kwargs["enable_rescaling"]
         self.rescaling_epsilon = kwargs["rescaling_epsilon"]
-        self.action_policy = actor.policy
+        self.action_policy = actor.getPolicy(actor_index, self.actors_num))
         self.nb_actions = kwargs["nb_actions"]
         self.input_shape = kwargs["input_shape"]
         self.input_sequence = kwargs["input_sequence"]
@@ -743,7 +744,6 @@ class ActorRunner(rl.core.Agent):
         self.priority_exponent = kwargs["priority_exponent"]
         self.lstm_ful_input_length = kwargs["lstm_ful_input_length"]
         self.batch_size = kwargs["batch_size"]
-        self.actors_num = len(kwargs["actors"])
         self.verbose = kwargs["verbose"]
 
         # create model

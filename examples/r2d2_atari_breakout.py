@@ -19,8 +19,8 @@ seed_everything(42)
 ENV_NAME = "BreakoutDeterministic-v4"
 
 class MyActor(Actor):
-    def __init__(self):
-        self.policy = EpsilonGreedy(0.1)
+    def getPolicy(self, actor_index, actor_num):
+        return EpsilonGreedy(0.1)
 
     def fit(self, index, agent):
         env = gym.make(ENV_NAME)
@@ -28,12 +28,12 @@ class MyActor(Actor):
         env.close()
 
 class MyActor1(MyActor):
-    def __init__(self):
-        self.policy = EpsilonGreedy(0.01)
+    def getPolicy(self, actor_index, actor_num):
+        return EpsilonGreedy(0.01)
 
 class MyActor2(MyActor):
-    def __init__(self):
-        self.policy = EpsilonGreedy(0.1)
+    def getPolicy(self, actor_index, actor_num):
+        return EpsilonGreedy(0.01)
 
 
 #-----------------------------------------------------------
