@@ -6,10 +6,10 @@ import math
 
 class Memory():
     """ Abstract base class for all implemented Memory. """
-    def add(self, experience, priority=0):
+    def add(self, exp, priority=0):
         raise NotImplementedError()
 
-    def update(self, idx, experience, priority):
+    def update(self, idx, exp, priority):
         raise NotImplementedError()
 
     def sample(self, batch_size, steps):
@@ -17,6 +17,21 @@ class Memory():
 
     def __len__(self):
         raise NotImplementedError()
+
+    def get_memorys(self):
+        raise NotImplementedError()
+
+    def set_memorys(self, data):
+        raise NotImplementedError()
+
+
+class _bisect_wrapper():
+    def __init__(self, data, priority):
+        self.data = data
+        self.priority = priority
+    
+    def __lt__(self, o):  # a<b
+        return self.priority < o.priority
 
 
 class ReplayMemory(Memory):
@@ -29,33 +44,31 @@ class ReplayMemory(Memory):
         self.index = 0
         self.buffer = []
 
-    def add(self, experience, priority=0):
+    def add(self, exp, priority=0):
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
-        self.buffer[self.index] = experience
+        self.buffer[self.index] = exp
         self.index = (self.index + 1) % self.capacity
 
-    def update(self, idx, experience, priority):
+    def update(self, idx, exp, priority):
         pass
 
     def sample(self, batch_size, steps):
         batchs = random.sample(self.buffer, batch_size)
-        indexes = np.empty(batch_size)
+        indexes = [ 0 for _ in range(batch_size)]
         weights = [ 1 for _ in range(batch_size)]
         return (indexes, batchs, weights)
 
     def __len__(self):
         return len(self.buffer)
 
+    def get_memorys(self):
+        return self.buffer[:]
 
+    def set_memorys(self, data):
+        for d in data:
+            self.add(d)
 
-
-class _bisect_wrapper():
-    def __init__(self, data):
-        self.d = data
-        self.priority = 0
-    def __lt__(self, o):  # a<b
-        return self.priority < o.priority
 
 class PERGreedyMemory(Memory):
     def __init__(self, capacity):
@@ -63,7 +76,7 @@ class PERGreedyMemory(Memory):
         self.capacity = capacity
         self.max_priority = 1
 
-    def add(self, experience, priority=0):
+    def add(self, exp, priority=0):
         if priority == 0:
             priority = self.max_priority
         if self.capacity <= len(self.buffer):
@@ -71,41 +84,45 @@ class PERGreedyMemory(Memory):
             self.buffer.pop(0)
         
         # priority は最初は最大を選択
-        experience = _bisect_wrapper(experience)
-        experience.priority = priority
-        bisect.insort(self.buffer, experience)
+        exp = _bisect_wrapper(exp, priority)
+        bisect.insort(self.buffer, exp)
 
-    def update(self, idx, experience, priority):
-        experience = _bisect_wrapper(experience)
-        experience.priority = priority
-        bisect.insort(self.buffer, experience)
+    def update(self, idx, exp, priority):
+        exp = _bisect_wrapper(exp, priority)
+        bisect.insort(self.buffer, exp)
 
         if self.max_priority < priority:
             self.max_priority = priority
     
     def sample(self, batch_size, step):
         # 取り出す(学習後に再度追加)
-        batchs = [self.buffer.pop().d for _ in range(batch_size)]
-        indexes = np.empty(batch_size, dtype='int')
+        batchs = [self.buffer.pop().data for _ in range(batch_size)]
+        indexes = [ 0 for _ in range(batch_size)]
         weights = [ 1 for _ in range(batch_size)]
         return (indexes, batchs, weights)
 
     def __len__(self):
         return len(self.buffer)
 
+    def get_memorys(self):
+        return [(d.data, d.priority) for d in self.buffer]
 
+    def set_memorys(self, data):
+        self.buffer = []
+        for d in data:
+            self.add(d[0], d[1])
 
 
 class SumTree():
     """
     copy from https://github.com/jaromiru/AI-blog/blob/5aa9f0b/SumTree.py
     """
-    write = 0
 
     def __init__(self, capacity):
         self.capacity = capacity
-        self.tree = np.zeros( 2*capacity - 1 )
-        self.data = np.zeros( capacity, dtype=object )
+        self.write = 0
+        self.tree = [ 0 for _ in range( 2*capacity - 1 )]
+        self.data = [ None for _ in range(capacity)]
 
     def _propagate(self, idx, change):
         parent = (idx - 1) // 2
@@ -152,6 +169,7 @@ class SumTree():
 
         return (idx, self.tree[idx], self.data[dataIdx])
 
+
 class PERProportionalMemory(Memory):
     def __init__(self, capacity, alpha, beta_initial, beta_steps, enable_is):
         self.capacity = capacity
@@ -165,16 +183,17 @@ class PERProportionalMemory(Memory):
         self.size = 0
         self.max_priority = 1
 
-    def add(self, experience, priority=0):
+    def add(self, exp, priority=0, _alpha_skip=False):
         if priority == 0:
             priority = self.max_priority
-        priority = priority ** self.alpha
-        self.tree.add(priority, experience)
+        if not _alpha_skip:
+            priority = priority ** self.alpha
+        self.tree.add(priority, exp)
         self.size += 1
         if self.size > self.capacity:
             self.size = self.capacity
 
-    def update(self, index, experience, priority):
+    def update(self, index, exp, priority):
         priority = priority ** self.alpha
         self.tree.update(index, priority)
 
@@ -196,14 +215,11 @@ class PERProportionalMemory(Memory):
         for i in range(batch_size):
             
             # indexesにないものを追加
-            loop_over = True
             for _ in range(100):  # for safety
                 r = random.random()*total
                 (idx, priority, experience) = self.tree.get(r)
                 if idx not in indexes:
-                    loop_over = False
                     break
-            #assert not loop_over
 
             indexes.append(idx)
             batchs.append(experience)
@@ -223,17 +239,22 @@ class PERProportionalMemory(Memory):
     def __len__(self):
         return self.size
 
+    def get_memorys(self):
+        data = []
+        for i in range(self.size):
+            d = self.tree.data[i]
+            p = self.tree.tree[i+self.capacity-1]
+            data.append([d, p])
+        
+        return data
 
+    def set_memorys(self, data):
+        self.tree = SumTree(self.capacity)
+        self.size = 0
 
+        for d in data:
+            self.add(d[0], d[1], _alpha_skip=True)
 
-
-class _bisect_wrapper():
-    def __init__(self, data):
-        self.d = data
-        self.priority = 0
-        self.p = 0
-    def __lt__(self, o):  # a<b
-        return self.priority < o.priority
 
 def rank_sum(k, a):
     return k*( 2+(k-1)*a )/2
@@ -256,25 +277,22 @@ class PERRankBaseMemory(Memory):
 
         self.max_priority = 1
 
-    def add(self, experience, priority=0):
+    def add(self, exp, priority=0):
         if priority == 0:
             priority = self.max_priority
         if self.capacity <= len(self.buffer):
             # 上限より多い場合は要素を削除
             self.buffer.pop(0)
         
-        experience = _bisect_wrapper(experience)
-        experience.priority = priority
-        bisect.insort(self.buffer, experience)
+        exp = _bisect_wrapper(exp, priority)
+        bisect.insort(self.buffer, exp)
 
-    def update(self, index, experience, priority):
-        experience = _bisect_wrapper(experience)
-        experience.priority = priority
-        bisect.insort(self.buffer, experience)
+    def update(self, index, exp, priority):
+        exp = _bisect_wrapper(exp, priority)
+        bisect.insort(self.buffer, exp)
 
         if self.max_priority < priority:
             self.max_priority = priority
-
 
     def sample(self, batch_size, step):
         indexes = []
@@ -303,12 +321,13 @@ class PERRankBaseMemory(Memory):
                 if index not in index_lst:
                     index_lst.append(index)
                     break
+        
         #assert len(index_lst) == batch_size
         index_lst.sort()
 
         for i, index in enumerate(reversed(index_lst)):
             o = self.buffer.pop(index)  # 後ろから取得するのでindexに変化なし
-            batchs.append(o.d)
+            batchs.append(o.data)
             indexes.append(index)
 
             if self.enable_is:
@@ -330,4 +349,14 @@ class PERRankBaseMemory(Memory):
 
     def __len__(self):
         return len(self.buffer)
+
+    def get_memorys(self):
+        return [(d.data, d.priority) for d in self.buffer]
+
+    def set_memorys(self, data):
+        self.buffer = []
+        self.max_priority = 1
+        for d in data:
+            self.add(d[0], d[1])
+
 

@@ -17,6 +17,7 @@ class SaveManager(R2D2Callback):
             save_dirpath,
             is_load=False,
             save_overwrite=True,
+            save_memory=False,
             checkpoint=False,
             checkpoint_interval=10000,
             verbose=1,
@@ -24,6 +25,7 @@ class SaveManager(R2D2Callback):
         self.save_dirpath = save_dirpath
         self.is_load = is_load
         self.save_overwrite = save_overwrite
+        self.save_memory = save_memory
         self.checkpoint = checkpoint
         self.checkpoint_interval = checkpoint_interval
         self.verbose = verbose
@@ -34,7 +36,7 @@ class SaveManager(R2D2Callback):
         path = os.path.join(self.save_dirpath, "last", "learner.dat")
         if self.verbose > 0:
             print("load: {}".format(path))
-        learner.load_weights(path)
+        learner.load_weights(path, load_memory=self.save_memory)
 
     def on_r2d2_learner_train_end(self, learner):
         if not self.checkpoint:
@@ -45,7 +47,7 @@ class SaveManager(R2D2Callback):
             path = os.path.join(dirname, "learner.dat")
             if self.verbose > 0:
                 print("save: {}".format(path))
-            learner.save_weights(path, overwrite=True)
+            learner.save_weights(path, overwrite=True, save_memory=self.save_memory)
 
     def on_r2d2_learner_end(self, learner):
         dirname = os.path.join(self.save_dirpath, "last")
@@ -53,7 +55,7 @@ class SaveManager(R2D2Callback):
         path = os.path.join(dirname, "learner.dat")
         if self.verbose > 0:
             print("save: {}".format(path))
-        learner.save_weights(path, self.save_overwrite)
+        learner.save_weights(path, self.save_overwrite, save_memory=self.save_memory)
 
     def on_r2d2_actor_begin(self, index, actor):
         self.actor = actor
@@ -171,20 +173,22 @@ class Logger2Stage(R2D2Callback):
             history = test_agent.test(self.test_env, nb_episodes=self.test_episodes, visualize=False, verbose=False)
             rewards = np.asarray(history.history["episode_reward"])
 
-            d["test_reward_min"] = rewards.min()
-            d["test_reward_ave"] = rewards.mean()
-            d["test_reward_max"] = rewards.max()
+            d["test_reward_min"] = float(rewards.min())
+            d["test_reward_ave"] = float(rewards.mean())
+            d["test_reward_med"] = float(np.median(rewards))
+            d["test_reward_max"] = float(rewards.max())
 
         self._add_logfile("learner.json", d)
         if self.verbose > 0:
             m = d["time"] / 60.0
-            print("{:8} Train {}, Time: {:.2f}m, TestReward: {:6.2f} - {:6.2f} (ave: {:6.2f})".format(
+            print("{:8} Train {}, Time: {:.2f}m, TestReward: {:6.2f} - {:6.2f} (ave: {:6.2f}, med: {:6.2f})".format(
                 d["name"],
                 d["train"],
                 m,
                 d["test_reward_min"],
                 d["test_reward_max"],
-                d["test_reward_ave"]))
+                d["test_reward_ave"],
+                d["test_reward_med"]))
     
     def on_r2d2_learner_train_end(self, learner):
         if not self._is_record():
@@ -197,22 +201,20 @@ class Logger2Stage(R2D2Callback):
     #--- actor ---
 
     def _actor_init(self):
-        self.reward_min = None
-        self.reward_max = None
-        self.reward_ave = 0
+        self.rewards = []
         self.actor_count = 0
 
     def _record_actor(self, index, logs={}):
-        if self.actor_count > 0:
-            ave = self.reward_ave/self.actor_count
-        else:
-            ave = 0
+        if len(self.rewards) == 0:
+            self.rewards = [0]
+        rewards = np.asarray(self.rewards)
         d = {
             "name": "actor{}".format(index),
             "time": time.time() - self.t0,
-            "reward_min": self.reward_min,
-            "reward_ave": ave,
-            "reward_max": self.reward_max,
+            "reward_min": float(rewards.min()),
+            "reward_ave": float(rewards.mean()),
+            "reward_med": float(np.median(rewards)),
+            "reward_max": float(rewards.max()),
             "count": self.actor_count,
             "train_count": int(self.actor.train_count.value),
             "nb_steps": int(logs.get("nb_steps", 0)),
@@ -221,13 +223,14 @@ class Logger2Stage(R2D2Callback):
 
         if self.verbose > 0:
             m = d["time"] / 60.0
-            print("{:8} Train {}, Time: {:.2f}m, Reward    : {:6.2f} - {:6.2f} (ave: {:6.2f}), nb_steps: {}".format(
+            print("{:8} Train {}, Time: {:.2f}m, Reward    : {:6.2f} - {:6.2f} (ave: {:6.2f}, med: {:6.2f}), nb_steps: {}".format(
                 d["name"],
                 d["train_count"],
                 m,
                 d["reward_min"],
                 d["reward_max"],
                 d["reward_ave"],
+                d["reward_med"],
                 d["nb_steps"]))
         self._add_logfile("actor{}.json".format(self.actor_index), d)
 
@@ -242,15 +245,7 @@ class Logger2Stage(R2D2Callback):
         self._actor_init()
 
     def on_episode_end(self, episode, logs={}):
-        if self.reward_min is None:
-            self.reward_min = logs["episode_reward"]
-            self.reward_max = logs["episode_reward"]
-        else:
-            if self.reward_min > logs["episode_reward"]:
-                self.reward_min = logs["episode_reward"]
-            if self.reward_max < logs["episode_reward"]:
-                self.reward_max = logs["episode_reward"]
-        self.reward_ave += logs["episode_reward"]
+        self.rewards.append(logs["episode_reward"])
         self.actor_count += 1
         
         if not self._is_record():
@@ -272,7 +267,7 @@ class Logger2Stage(R2D2Callback):
 
     def drawGraph(self, actors=None):
         
-        learner_logs = {"x": [], "y1": [], "y2": [], "y3": []}
+        learner_logs = {"x": [], "y1": [], "y2": [], "y3": [], "y4": []}
         actors_logs = {}
         x_max = 0
         for log in self.getLogs():
@@ -284,16 +279,19 @@ class Logger2Stage(R2D2Callback):
                 learner_logs["x"].append(t)
                 learner_logs["y1"].append(log["test_reward_min"])
                 learner_logs["y2"].append(log["test_reward_ave"])
-                learner_logs["y3"].append(log["test_reward_max"])
+                learner_logs["y3"].append(log["test_reward_med"])
+                learner_logs["y4"].append(log["test_reward_max"])
 
             else:
                 if name not in actors_logs:
-                    actors_logs[name] = {"x": [], "y1": [], "y2": [], "y3": []}
+                    actors_logs[name] = {"x": [], "y1": [], "y2": [], "y3": [], "y4": []}
 
                 actors_logs[name]["x"].append(t)
                 actors_logs[name]["y1"].append(log["reward_min"])
                 actors_logs[name]["y2"].append(log["reward_ave"])
-                actors_logs[name]["y3"].append(log["reward_max"])
+                actors_logs[name]["y3"].append(log["reward_med"])
+                actors_logs[name]["y4"].append(log["reward_max"])
+        
         if actors is None:
             n = len(actors_logs)+1
         else:
@@ -303,7 +301,8 @@ class Logger2Stage(R2D2Callback):
         plt.subplot(n, 1, 1)
         plt.plot(learner_logs["x"], learner_logs["y1"], marker="o", label="min")
         plt.plot(learner_logs["x"], learner_logs["y2"], marker="o", label="ave")
-        plt.plot(learner_logs["x"], learner_logs["y3"], marker="o", label="max")
+        plt.plot(learner_logs["x"], learner_logs["y3"], marker="o", label="med")
+        plt.plot(learner_logs["x"], learner_logs["y4"], marker="o", label="max")
         plt.xlim([0, x_max])
         plt.grid(True)
         plt.legend()
@@ -318,7 +317,8 @@ class Logger2Stage(R2D2Callback):
             plt.subplot(n, 1, 2+i)
             plt.plot(v["x"], v["y1"], marker="o", label="min")
             plt.plot(v["x"], v["y2"], marker="o", label="ave")
-            plt.plot(v["x"], v["y3"], marker="o", label="max")
+            plt.plot(v["x"], v["y3"], marker="o", label="med")
+            plt.plot(v["x"], v["y4"], marker="o", label="max")
             plt.xlim([0, x_max])
             plt.grid(True)
             plt.legend()

@@ -10,7 +10,7 @@ from src.memory import *
 
 class Test(unittest.TestCase):
 
-    @unittest.skip("")
+    #@unittest.skip("")
     def test_memorys(self):
         test_patterns = [
             ReplayMemory(10),
@@ -45,6 +45,7 @@ class Test(unittest.TestCase):
 
         # 中身を1～10にする
         for i in range(capacity):
+            i += 1
             memory.add((i,i,i,i) , i)
         assert len(memory) == capacity
 
@@ -71,6 +72,13 @@ class Test(unittest.TestCase):
                 memory.update(indexes[i], batchs[i], batchs[i][3])
             assert len(memory) == capacity
 
+            # save/load
+            d = memory.get_memorys()
+            memory.set_memorys(d)
+            d2 = memory.get_memorys()
+            self.assertListEqual(d, d2)
+            
+
         # debug
         #for k, v in sorted(counter.items(), key=lambda x: x[0]):
         #    print(str(k) + ": " + str(v))
@@ -80,25 +88,26 @@ class Test(unittest.TestCase):
         counter_keys = list(counter.keys())
         counter_keys.sort()
         if memory.__class__ == PERGreedyMemory:
-            # 0PERGreedyMemory は 5～9固定
-            self.assertEqual(counter_keys, [i for i in range(5, 10)])
+            # 0PERGreedyMemory は 6～10固定
+            self.assertEqual(counter_keys, [i+1 for i in range(5, 10)])
         else:
-            # 0～10まであること
-            self.assertEqual(counter_keys, [i for i in range(capacity)])
+            # 1～11まであること
+            self.assertEqual(counter_keys, [i+1 for i in range(capacity)])
         
         #--- 比率チェック
         if memory.__class__ == ReplayMemory:
             pass
         elif memory.__class__ == PERGreedyMemory:
             # 全て同じ
-            for i in range(5, 9):
+            for i in range(6, 10):
                 self.assertEqual(counter[i], counter[i+1])
         else:
             # priorityが高いほど数が増えている
             for i in range(capacity-1):
+                i += 1
                 self.assertLess(counter[i], counter[i+1])
     
-    @unittest.skip("")
+    #@unittest.skip("")
     def test_speed(self):
         capacity = 100_000_000
         test_patterns = [
@@ -135,7 +144,7 @@ class Test(unittest.TestCase):
             memory.add( (uniqid,uniqid,uniqid,uniqid), r)
             uniqid += 1
         
-        for _ in range(100_000):
+        for _ in range(20_000):
 
             # add
             r = random.random()
@@ -160,6 +169,7 @@ class Test(unittest.TestCase):
         print("{}: {}s".format(memory.__class__.__name__, time.time()-t0))
 
 
+    #@unittest.skip("")
     def test_is(self):
         test_patterns = [
             PERProportionalMemory(

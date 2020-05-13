@@ -124,6 +124,8 @@ class Rainbow(rl.core.Agent):
 
         self.compiled = True  # super
 
+        self.local_step = 0
+
 
     def reset_states(self):  # override
         self.repeated_action = 0
@@ -230,16 +232,24 @@ class Rainbow(rl.core.Agent):
     def compile(self, optimizer, metrics=[]):  # override
         self.compiled = True  # super
 
-    def save_weights(self, filepath, overwrite=False):  # override
+    def save_weights(self, filepath, overwrite=False, save_memory=False):  # override
         if overwrite or not os.path.isfile(filepath):
             d = {
                 "weights": self.model.get_weights(),
                 "policy": self.action_policy.get_weights(),
+                "step": self.local_step,
             }
             with open(filepath, 'wb') as f:
                 pickle.dump(d, f)
+            
+            # memory
+            if save_memory:
+                d = self.memory.get_memorys()
+                with open(filepath + ".mem", 'wb') as f:
+                    pickle.dump(d, f)
 
-    def load_weights(self, filepath):  # override
+
+    def load_weights(self, filepath, load_memory=False):  # override
         if not os.path.isfile(filepath):
             return
         with open(filepath, 'rb') as f:
@@ -247,6 +257,15 @@ class Rainbow(rl.core.Agent):
         self.model.set_weights(d["weights"])
         self.target_model.set_weights(d["weights"])
         self.action_policy.set_weights(d["policy"])
+        self.local_step = d["step"]
+
+        # memory
+        if load_memory:
+            filepath = filepath + ".mem"
+            if os.path.isfile(filepath):
+                with open(filepath, 'rb') as f:
+                    d = pickle.load(f)
+                self.memory.set_memorys(d)
 
     def forward(self, observation):  # override
         # observation
@@ -306,8 +325,8 @@ class Rainbow(rl.core.Agent):
             return self._qvals
         else:
             if self._qvals is None:
-                state = self._state1_np[np.newaxis,:]
-                self._qvals = self.model.predict(state, batch_size=1)[0]
+                self._qvals = self.model.predict(
+                    self._state1_np[np.newaxis,:], batch_size=1)[0]
             return self._qvals
 
     def get_state(self):
@@ -342,7 +361,7 @@ class Rainbow(rl.core.Agent):
                 self._state1))
 
         # 初期のReplay Memoryの確保、学習しない。
-        if self.step <= self.memory_warmup_size:
+        if len(self.memory) <= self.memory_warmup_size:
             return
         
         # 学習の更新間隔
@@ -350,7 +369,7 @@ class Rainbow(rl.core.Agent):
             return
 
         # memory から優先順位に基づき状態を取得
-        (indexes, batchs, weights) = self.memory.sample(self.batch_size, self.step)
+        (indexes, batchs, weights) = self.memory.sample(self.batch_size, self.local_step)
         
         # 学習(長いので関数化)
         if self.lstm_type == LstmType.STATEFUL:
@@ -490,7 +509,7 @@ class Rainbow(rl.core.Agent):
 
     def backward(self, reward, terminal):  # override
         # terminal は env が終了状態ならTrue
-
+        self.local_step += 1
         if not self.training:
             return []
         
@@ -523,4 +542,3 @@ class Rainbow(rl.core.Agent):
     @property
     def layers(self):  #override
         return self.model.layers[:]
-

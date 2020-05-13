@@ -103,14 +103,9 @@ def main(mode):
         print("--- start ---")
         print("'Ctrl + C' is stop.")
         try:
-            #agent.load_weights(weight_file)
+            #agent.load_weights(weight_file, load_memory=True)
             
-            mc = rl.callbacks.ModelIntervalCheckpoint(
-                filepath = weight_file + '_{step:02d}.h5',
-                interval=10_000
-            )
-
-            agent.fit(env, nb_steps=kwargs["memory_warmup_size"] + 100_000, visualize=False, verbose=0, callbacks=[mc, log])
+            agent.fit(env, nb_steps=kwargs["memory_warmup_size"] + 100_000, visualize=False, verbose=0, callbacks=[log])
             test_env.close()
 
         except Exception:
@@ -118,7 +113,7 @@ def main(mode):
 
         # save
         print("weight save: " + weight_file)
-        agent.save_weights(weight_file, overwrite=True)
+        agent.save_weights(weight_file, overwrite=True, save_memory=True)
         
     # plt
     log.drawGraph()

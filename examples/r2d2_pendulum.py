@@ -34,15 +34,7 @@ class MyActor1(MyActor):
 
 class MyActor2(MyActor):
     def getPolicy(self, actor_index, actor_num):
-        return EpsilonGreedy(0.05)
-
-class MyActor3(MyActor):
-    def getPolicy(self, actor_index, actor_num):
         return EpsilonGreedy(0.1)
-
-class MyActor4(MyActor):
-    def getPolicy(self, actor_index, actor_num):
-        return EpsilonGreedy(0.2)
 
 
 def main(mode):
@@ -83,7 +75,7 @@ def main(mode):
         "remote_memory_warmup_size": 200,  # 初期のメモリー確保用step数(学習しない)
         "target_model_update": 1000,  #  target networkのupdate間隔
         "action_interval": 1,         # アクションを実行する間隔
-        "batch_size": 32,
+        "batch_size": 16,
         "gamma": 0.997,             # Q学習の割引率
         "enable_double_dqn": True,  # DDQN有効フラグ
         "enable_rescaling": enable_rescaling,    # rescalingを有効にするか(priotrity)
@@ -94,9 +86,9 @@ def main(mode):
 
         # その他
         "processor": processor,
-        "actors": [MyActor1, MyActor2, MyActor3, MyActor4],
+        "actors": [MyActor1, MyActor2],
         "remote_memory": PERRankBaseMemory(
-            capacity= 100_000,
+            capacity= 50_000,
             alpha=0.9,           # PERの確率反映率
             beta_initial=0.0,    # IS反映率の初期値
             beta_steps=10_000,  # IS反映率の上昇step数
@@ -104,7 +96,7 @@ def main(mode):
         ),
 
         # actor 関係
-        "actor_model_sync_interval": 500,  # learner から model を同期する間隔
+        "actor_model_sync_interval": 200,  # learner から model を同期する間隔
     }
     
     #--- R2D2
@@ -126,6 +118,7 @@ def main(mode):
         save_manager = SaveManager(
             save_dirpath="tmp",
             is_load=False,
+            save_memory=True,
             checkpoint=True,
             checkpoint_interval=2000,
             verbose=0

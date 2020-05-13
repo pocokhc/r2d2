@@ -24,7 +24,7 @@ def main(mode):
     ENV_NAME = "BreakoutDeterministic-v4"
 
     env = gym.make(ENV_NAME)
-    processor = AtariProcessor(is_clip=False, freeze_check=20)
+    processor = AtariProcessor(is_clip=False, max_steps=1000)
     enable_rescaling = True
 
     weight_file = "tmp/breakout_weight.h5"
@@ -43,7 +43,7 @@ def main(mode):
         "enable_dueling_network": True,
         "dueling_network_type": DuelingNetwork.AVERAGE,  # dueling networkで使うアルゴリズム
         "lstm_type": LstmType.STATELESS,           # 使用するLSTMアルゴリズム
-        "lstm_units_num": 256,             # LSTMのユニット数
+        "lstm_units_num": 128,             # LSTMのユニット数
         "lstm_ful_input_length": 1,       # ステートフルLSTMの入力数
 
         # train/action関係
@@ -68,7 +68,7 @@ def main(mode):
             exploration_steps=1_000_000  # 初期→最終状態になるまでのステップ数
         ),
         "memory": PERRankBaseMemory(
-            capacity= 1_000_000,
+            capacity= 50_000,
             alpha=0.9,           # PERの確率反映率
             beta_initial=0.0,    # IS反映率の初期値
             beta_steps=1_000_000,  # IS反映率の上昇step数
@@ -84,7 +84,7 @@ def main(mode):
     log = Logger2Stage(LoggerType.STEP,
         warmup=kwargs["memory_warmup_size"],
         interval1=200,
-        interval2=20_000,
+        interval2=10_000,
         change_count=5,
         savefile="tmp/log.json",
         test_agent=test_agent,
@@ -96,15 +96,16 @@ def main(mode):
         print("--- start ---")
         print("'Ctrl + C' is stop.")
         try:
-            #agent.load_weights(weight_file)
+            #agent.load_weights(weight_file, load_memory=True)
 
-            mc = rl.callbacks.ModelIntervalCheckpoint(
+            mc = ModelIntervalCheckpoint(
                 filepath = weight_file + '_{step:02d}.h5',
-                interval=10_000
+                interval=100_000,
+                save_memory=True,
             )
 
-            agent.fit(env, nb_steps=100_000, visualize=False, verbose=0, callbacks=[mc, log])
-            #agent.fit(env, nb_steps=1_750_000, visualize=False, verbose=0, callbacks=[mc, log])
+            #agent.fit(env, nb_steps=100_000, visualize=False, verbose=0, callbacks=[mc, log])
+            agent.fit(env, nb_steps=1_750_000, visualize=False, verbose=0, callbacks=[mc, log])
             test_env.close()
 
         except Exception:
@@ -112,7 +113,7 @@ def main(mode):
         
         # save
         print("weight save: " + weight_file)
-        agent.save_weights(weight_file, overwrite=True)
+        agent.save_weights(weight_file, overwrite=True, save_memory=True)
     
     # plt
     log.drawGraph()

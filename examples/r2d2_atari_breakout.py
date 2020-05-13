@@ -33,7 +33,7 @@ class MyActor1(MyActor):
 
 class MyActor2(MyActor):
     def getPolicy(self, actor_index, actor_num):
-        return EpsilonGreedy(0.01)
+        return EpsilonGreedy(0.1)
 
 
 #-----------------------------------------------------------
@@ -42,7 +42,7 @@ class MyActor2(MyActor):
 def main(mode):
 
     env = gym.make(ENV_NAME)
-    processor = AtariProcessor(is_clip=False, freeze_check=20)
+    processor = AtariProcessor(is_clip=False, max_steps=1000)
     enable_rescaling = True
     
     kwargs = {
@@ -58,7 +58,7 @@ def main(mode):
         "enable_dueling_network": True,  # dueling_network有効フラグ
         "dueling_network_type": DuelingNetwork.AVERAGE,   # dueling_networkのアルゴリズム
         "lstm_type": LstmType.STATELESS,  # LSTMのアルゴリズム
-        "lstm_units_num": 256,            # LSTM層のユニット数
+        "lstm_units_num": 128,            # LSTM層のユニット数
         "lstm_ful_input_length": 1,      # ステートフルLSTMの入力数
 
         # train/action関係
@@ -78,7 +78,7 @@ def main(mode):
         "processor": processor,
         "actors": [MyActor1, MyActor2],
         "remote_memory": PERRankBaseMemory(
-            capacity= 1_000_000,
+            capacity= 50_000,
             alpha=0.9,             # PERの確率反映率
             beta_initial=0.0,      # IS反映率の初期値
             beta_steps=1_000_000,  # IS反映率の上昇step数
@@ -86,7 +86,7 @@ def main(mode):
         ),
 
         # actor 関係
-        "actor_model_sync_interval": 500,  # learner から model を同期する間隔
+        "actor_model_sync_interval": 200,  # learner から model を同期する間隔
     }
     
     #--- R2D2
@@ -110,13 +110,13 @@ def main(mode):
         save_manager = SaveManager(
             save_dirpath="tmp",
             is_load=False,
+            save_memory=True,
             checkpoint=True,
-            checkpoint_interval=10_000,
+            checkpoint_interval=100_000,
             verbose=0
         )
         
-        manager.train(nb_trains=100_000, callbacks=[save_manager, log])
-        #manager.train(nb_trains=1_750_000, callbacks=[save_manager, log])
+        manager.train(nb_trains=1_750_000, callbacks=[save_manager, log])
 
     # plot
     log.drawGraph()
@@ -129,8 +129,8 @@ def main(mode):
     movie = MovieLogger()
     conv = ConvLayerView(agent)
     agent.test(env, nb_episodes=1, visualize=False, callbacks=[movie, conv])
-    movie.save(gifname="tmp/atari1.gif", fps=30)
-    conv.save(grad_cam_layers=["conv_1", "conv_2", "conv_3"], add_adv_layer=True, add_val_layer=True, end_frame=200, gifname="tmp/atari2.gif", fps=10)
+    movie.save(gifname="tmp/breakout1.gif", fps=30)
+    conv.save(grad_cam_layers=["conv_1", "conv_2", "conv_3"], add_adv_layer=True, add_val_layer=True, end_frame=200, gifname="tmp/breakout2.gif", fps=10)
     
     env.close()
 

@@ -237,9 +237,7 @@ class Logger2Stage(keras.callbacks.Callback):
         elif self.logger_type == LoggerType.STEP:
             self.step = 0
         
-        self.reward_min = None
-        self.reward_max = None
-        self.reward_ave = 0
+        self.rewards = []
         self.count = 0
 
 
@@ -275,16 +273,16 @@ class Logger2Stage(keras.callbacks.Callback):
         if logs is None:
             logs = {}
 
-        if self.count > 0:
-            ave = self.reward_ave/self.count
-        else:
-            ave = 0
-        
+        if len(self.rewards) == 0:
+            self.rewards = [0]
+
+        rewards = np.asarray(self.rewards)
         d = {
             "time": time.time() - self.t0,
-            "reward_min": 0 if self.reward_min is None else self.reward_min,
-            "reward_ave": ave,
-            "reward_max": 0 if self.reward_max is None else self.reward_max,
+            "reward_min": float(rewards.min()),
+            "reward_ave": float(rewards.mean()),
+            "reward_med": float(np.median(rewards)),
+            "reward_max": float(rewards.max()),
             "count": self.count,
             "nb_steps": int(logs.get("nb_steps", 0)),
         }
@@ -298,23 +296,26 @@ class Logger2Stage(keras.callbacks.Callback):
             history = self.test_agent.test(self.test_env, nb_episodes=self.test_episodes, visualize=False, verbose=False)
             rewards = np.asarray(history.history["episode_reward"])
 
-            d["test_reward_min"] = rewards.min()
-            d["test_reward_ave"] = rewards.mean()
-            d["test_reward_max"] = rewards.max()
+            d["test_reward_min"] = float(rewards.min())
+            d["test_reward_ave"] = float(rewards.mean())
+            d["test_reward_med"] = float(np.median(rewards))
+            d["test_reward_max"] = float(rewards.max())
 
         if self.verbose > 0:
             m = d["time"] / 60.0
             s = "Steps {}, Time: {:.2f}m, ".format(d["nb_steps"], m)
             if "test_reward_min" in d:
-                s += "TestReward: {:6.2f} - {:6.2f} (ave: {:6.2f}), ".format(
+                s += "TestReward: {:6.2f} - {:6.2f} (ave: {:6.2f}, med: {:6.2f}), ".format(
                     d["test_reward_min"],
                     d["test_reward_max"],
                     d["test_reward_ave"],
+                    d["test_reward_med"],
                 )
-            s += "Reward: {:6.2f} - {:6.2f} (ave: {:6.2f})".format(
+            s += "Reward: {:6.2f} - {:6.2f} (ave: {:6.2f}, med: {:6.2f})".format(
                 d["reward_min"],
                 d["reward_max"],
                 d["reward_ave"],
+                d["reward_med"],
             )
             print(s)
 
@@ -322,8 +323,9 @@ class Logger2Stage(keras.callbacks.Callback):
 
         # add file
         if self.savefile != "":
+            s = json.dumps(d)
             with open(self.savefile, "a") as f:
-                f.write("{}\n".format(json.dumps(d)))
+                f.write("{}\n".format(s))
 
 
     def on_train_begin(self, logs={}):
@@ -347,15 +349,7 @@ class Logger2Stage(keras.callbacks.Callback):
 
 
     def on_episode_end(self, episode, logs={}):
-        if self.reward_min is None:
-            self.reward_min = logs["episode_reward"]
-            self.reward_max = logs["episode_reward"]
-        else:
-            if self.reward_min > logs["episode_reward"]:
-                self.reward_min = logs["episode_reward"]
-            if self.reward_max < logs["episode_reward"]:
-                self.reward_max = logs["episode_reward"]
-        self.reward_ave += logs["episode_reward"]
+        self.rewards.append(logs["episode_reward"])
         self.count += 1
 
         if not self._is_record():
@@ -381,6 +375,7 @@ class Logger2Stage(keras.callbacks.Callback):
         log_y1 = []
         log_y2 = []
         log_y3 = []
+        log_y4 = []
         label = ""
         for log in self.getLogs():
             log_x.append(log["time"]/60.0)
@@ -388,16 +383,19 @@ class Logger2Stage(keras.callbacks.Callback):
                 label = "test reward"
                 log_y1.append(log["test_reward_min"])
                 log_y2.append(log["test_reward_ave"])
-                log_y3.append(log["test_reward_max"])
+                log_y3.append(log["test_reward_med"])
+                log_y4.append(log["test_reward_max"])
             else:
                 label = "reward"
                 log_y1.append(log["reward_min"])
                 log_y2.append(log["reward_ave"])
-                log_y3.append(log["reward_max"])
+                log_y3.append(log["reward_med"])
+                log_y4.append(log["reward_max"])
 
         plt.plot(log_x, log_y1, marker="o", label="min")
         plt.plot(log_x, log_y2, marker="o", label="ave")
-        plt.plot(log_x, log_y3, marker="o", label="max")
+        plt.plot(log_x, log_y3, marker="o", label="med")
+        plt.plot(log_x, log_y4, marker="o", label="max")
         plt.grid(True)
         plt.legend()
         plt.title("Timeline(m)")
@@ -440,5 +438,27 @@ class MovieLogger(rl.callbacks.Callback):
         self.patch.set_data(self.frames[frame + self.start_frame])
 
 
+# copy from: https://github.com/keras-rl/keras-rl/blob/master/rl/callbacks.py
+class ModelIntervalCheckpoint(rl.callbacks.Callback):
+    def __init__(self, filepath, interval, save_memory=False, verbose=0):
+        super(ModelIntervalCheckpoint, self).__init__()
+        self.filepath = filepath
+        self.interval = interval
+        self.verbose = verbose
+        self.save_memory = save_memory
+        self.total_steps = 0
+
+    def on_step_end(self, step, logs={}):
+        """ Save weights at interval steps during training """
+        self.total_steps += 1
+        if self.total_steps % self.interval != 0:
+            # Nothing to do.
+            return
+
+        filepath = self.filepath.format(step=self.total_steps, **logs)
+        if self.verbose > 0:
+            print('Step {}: saving model to {}'.format(
+                self.total_steps, filepath))
+        self.model.save_weights(filepath, overwrite=True, save_memory=save_memory)
 
 

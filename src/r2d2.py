@@ -268,7 +268,7 @@ class R2D2():
         test_actor = ActorRunner(-1, manager_kwargs, test_actor(), None, None, None, None)
         with open(learner_model_path, 'rb') as f:
             d = pickle.load(f)
-        test_actor.model.set_weights(d)
+        test_actor.model.set_weights(d["weights"])
         return test_actor
 
 
@@ -621,17 +621,35 @@ class LearnerRunner():
             priority = self.priority_exponent * np.max(prioritys[batch_i]) + (1-self.priority_exponent) * np.average(prioritys[batch_i])
             self.memory.update(indexes[batch_i], batch, priority)
         
-    def save_weights(self, filepath, overwrite=False):
+    def save_weights(self, filepath, overwrite=False, save_memory=False):
         if overwrite or not os.path.isfile(filepath):
-            d = self.model.get_weights()
+            d = {
+                "weights": self.model.get_weights(),
+                "train": self.train_count.value,
+            }
             with open(filepath, 'wb') as f:
                 pickle.dump(d, f)
+
+            # memory
+            if save_memory:
+                d = self.memory.get_memorys()
+                with open(filepath + ".mem", 'wb') as f:
+                    pickle.dump(d, f)
         
-    def load_weights(self, filepath):
+    def load_weights(self, filepath, load_memory=False):
         with open(filepath, 'rb') as f:
             d = pickle.load(f)
-        self.model.set_weights(d)
-        self.target_model.set_weights(d)
+        self.model.set_weights(d["weights"])
+        self.target_model.set_weights(d["weights"])
+        self.train_count.value = d["train"]
+
+        # memory
+        if load_memory:
+            filepath = filepath + ".mem"
+            if os.path.isfile(filepath):
+                with open(filepath, 'rb') as f:
+                    d = pickle.load(f)
+                self.memory.set_memorys(d)
 
 
 #---------------------------------------------------
@@ -731,7 +749,7 @@ class ActorRunner(rl.core.Agent):
 
         self.enable_rescaling = kwargs["enable_rescaling"]
         self.rescaling_epsilon = kwargs["rescaling_epsilon"]
-        self.action_policy = actor.getPolicy(actor_index, self.actors_num))
+        self.action_policy = actor.getPolicy(actor_index, self.actors_num)
         self.nb_actions = kwargs["nb_actions"]
         self.input_shape = kwargs["input_shape"]
         self.input_sequence = kwargs["input_sequence"]
@@ -753,6 +771,7 @@ class ActorRunner(rl.core.Agent):
         model_json = self.model.to_json()
         self.action_policy.compile(model_json)
         self.compiled = True  # super
+
 
     def reset_states(self):  # override
         self.repeated_action = 0
@@ -957,7 +976,6 @@ class ActorRunner(rl.core.Agent):
 
     def backward(self, reward, terminal):  # override
         # terminal は env が終了状態ならTrue
-
         if not self.training:
             return []
 

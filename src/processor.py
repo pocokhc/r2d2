@@ -133,7 +133,13 @@ class AcrobotProcessor(rl.core.Processor):
 
 
 class AtariProcessor(rl.core.Processor):
-    def __init__(self, reshape_size=(84, 84), is_clip=False, max_steps=0, freeze_check=0, freeze_reward=-1):
+    def __init__(self,
+            reshape_size=(84, 84),
+            is_clip=False,
+            max_steps=0,
+            freeze_check=0,
+            freeze_reward=-1,
+        ):
         self.image_shape = reshape_size
         self.is_clip = is_clip
         self.max_steps = max_steps
