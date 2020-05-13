@@ -47,7 +47,7 @@ def main(mode):
         "lstm_ful_input_length": 1,       # ステートフルLSTMの入力数
 
         # train/action関係
-        "memory_warmup_size": 50_000,    # 初期のメモリー確保用step数(学習しない)
+        "memory_warmup_size": 10_000,    # 初期のメモリー確保用step数(学習しない)
         "target_model_update": 10_000,  # target networkのupdate間隔
         "action_interval": 1,       # アクションを実行する間隔
         "train_interval": 1,        # 学習する間隔

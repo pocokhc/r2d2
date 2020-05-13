@@ -459,6 +459,6 @@ class ModelIntervalCheckpoint(rl.callbacks.Callback):
         if self.verbose > 0:
             print('Step {}: saving model to {}'.format(
                 self.total_steps, filepath))
-        self.model.save_weights(filepath, overwrite=True, save_memory=save_memory)
+        self.model.save_weights(filepath, overwrite=True, save_memory=self.save_memory)
 
 
